@@ -204,14 +204,18 @@ async def importar_productos(file: UploadFile=File(...), db: Session=Depends(get
     return {"created": created, "updated": updated}
 
 def _prod_dict(p):
+    try: fam_nombre = p.familia.nombre if p.familia else None
+    except Exception: fam_nombre = f"Fam.{p.familia_id}" if p.familia_id else None
+    try: prov_nombre = p.proveedor.nombre if p.proveedor else None
+    except Exception: prov_nombre = f"Prov.{p.proveedor_id}" if p.proveedor_id else None
+    try: imp_pct = p.impuesto.porcentaje if p.impuesto else 0
+    except Exception: imp_pct = 0
     return {"id":p.id,"codigo":p.codigo,"codigo_barra":p.codigo_barra,"descripcion":p.descripcion,
             "familia_id":p.familia_id,"proveedor_id":p.proveedor_id,"costo":p.costo,
             "lista1":p.lista1,"lista2":p.lista2,"lista3":p.lista3,"lista4":p.lista4,
             "impuesto_id":p.impuesto_id,"stock":p.stock,"stock_minimo":p.stock_minimo,
             "compra_minima":p.compra_minima,"unidad":p.unidad,
-            "familia_nombre":p.familia.nombre if p.familia else None,
-            "proveedor_nombre":p.proveedor.nombre if p.proveedor else None,
-            "impuesto_pct":p.impuesto.porcentaje if p.impuesto else 0}
+            "familia_nombre":fam_nombre,"proveedor_nombre":prov_nombre,"impuesto_pct":imp_pct}
 
 # ── FAMILIAS ─────────────────────────────────────────────────
 @app.get("/api/familias")
