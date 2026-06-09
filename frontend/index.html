@@ -566,7 +566,7 @@ function goPage(name){
   document.getElementById('page-title').textContent=pageTitles[name]||name;
   closeSidebar();
   if(name==='dashboard')loadDashboard();
-  if(name==='stock'){populateFamFilter();loadStock();}
+  if(name==='stock'){loadCaches().then(()=>{populateFamFilter();loadStock();});}
   if(name==='comprobantes')loadComprobantes();
   if(name==='clientes')loadClientes();
   if(name==='movimientos')loadMovimientos();
@@ -614,7 +614,8 @@ async function loadDashboard(){
 // STOCK
 function populateFamFilter(){const sel=document.getElementById('st-fam');sel.innerHTML='<option value="">Todas las familias</option>'+familiasCache.map(f=>`<option value="${f.id}">${f.nombre}</option>`).join('');}
 async function loadStock(){
-  const q=document.getElementById('st-q').value,fam=document.getElementById('st-fam').value,fil=document.getElementById('st-fil').value;
+  try{
+  const q=document.getElementById('st-q')?.value||'',fam=document.getElementById('st-fam')?.value||'',fil=document.getElementById('st-fil')?.value||'';
   const r=await api('GET',`/api/productos?q=${encodeURIComponent(q)}&familia_id=${fam}&stock_filter=${fil}&page=${stPage}&per_page=25`);if(!r)return;
   document.getElementById('st-count').textContent=`${r.total} productos`;
   document.getElementById('st-tbody').innerHTML=r.items.map(p=>`<tr>
@@ -628,7 +629,7 @@ async function loadStock(){
     <td><div style="display:flex;gap:4px"><button class="btn btn-ghost btn-sm" onclick="editProducto(${p.id})">✏</button><button class="btn btn-ghost btn-sm" onclick="openMovForProduct(${p.id},'${p.codigo}','${p.descripcion.replace(/'/g,'&#39;').replace(/"/g,'&quot;')}')">↕</button></div></td>
   </tr>`).join('');
   renderPag('st-pag-info','st-pag-btns',stPage,r.pages,r.total,25,p=>{stPage=p;loadStock();});
-}
+  }catch(e){console.error('loadStock error:',e);toast('Error cargando productos: '+e.message,'err');}}
 function renderPag(infoId,btnsId,page,pages,total,perPage,cb){
   document.getElementById(infoId).textContent=`Página ${page} de ${pages} (${total})`;
   let html=`<button class="pb" onclick="(${cb.toString()})(${Math.max(1,page-1)})" ${page<=1?'disabled':''}>‹</button>`;
