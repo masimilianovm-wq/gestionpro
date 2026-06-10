@@ -403,6 +403,25 @@ def create_comprobante(data: dict, db: Session=Depends(get_db), user=Depends(get
     db.commit(); db.refresh(comp)
     return _comp_full(comp)
 
+@app.delete("/api/comprobantes/{cid}")
+def delete_comprobante(cid: int, devolver_stock: bool=True, db: Session=Depends(get_db), user=Depends(require_admin)):
+    c = db.query(Comprobante).filter(Comprobante.id==cid).first()
+    if not c: raise HTTPException(404)
+    if devolver_stock and c.estado != "Anulado":
+        for it in (c.items or []):
+            pid = it.get("prod_id")
+            if not pid: continue
+            prod = db.query(Producto).filter(Producto.id==pid).first()
+            if not prod: continue
+            prev = prod.stock
+            prod.stock = prev + int(it.get("qty",1))
+            db.add(Movimiento(tipo="Devolución (borrado comp.)", producto_id=prod.id,
+                producto_codigo=prod.codigo, producto_desc=prod.descripcion,
+                cantidad=int(it.get("qty",1)), stock_anterior=prev, stock_nuevo=prod.stock,
+                motivo=f"Borrado {c.tipo} #{c.numero}", usuario_id=user.id))
+    db.delete(c); db.commit()
+    return {"ok": True}
+
 @app.put("/api/comprobantes/{cid}/estado")
 def update_estado(cid: int, data: dict, db: Session=Depends(get_db), user=Depends(get_current_user)):
     c = db.query(Comprobante).filter(Comprobante.id==cid).first()
@@ -437,6 +456,38 @@ def _comp_full(c):
             "impuestos_detalle":c.impuestos_detalle,"total":c.total,
             "lista_precio":c.lista_precio,"forma_pago":c.forma_pago,
             "estado":c.estado,"observaciones":c.observaciones}
+
+@app.post("/api/clientes/importar")
+async def importar_clientes(file: UploadFile=File(...), db: Session=Depends(get_db), user=Depends(require_admin)):
+    content_file = await file.read()
+    wb = load_workbook(BytesIO(content_file), read_only=True, data_only=True)
+    ws = wb.active
+    headers = [str(c.value).strip() if c.value else '' for c in next(ws.iter_rows(min_row=1, max_row=1))]
+    def col(row_vals, name, default=''):
+        try: return row_vals[headers.index(name)] if name in headers else default
+        except: return default
+    created = 0; updated = 0
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        if not any(row): continue
+        row_vals = list(row)
+        nombre = str(col(row_vals,'Nombre',col(row_vals,'RazonSocial',''))).strip()
+        if not nombre or nombre=='None': continue
+        cuit = str(col(row_vals,'CUIT',col(row_vals,'DNI',''))).strip()
+        existing = db.query(Cliente).filter(Cliente.nombre==nombre).first()
+        data = {"nombre":nombre,"cuit":cuit if cuit!='None' else '',
+                "telefono":str(col(row_vals,'Telefono','')).strip(),
+                "email":str(col(row_vals,'Email','')).strip(),
+                "direccion":str(col(row_vals,'Direccion','')).strip(),
+                "condicion_iva":str(col(row_vals,'CondicionIVA','Consumidor Final')).strip()}
+        for k,v in data.items():
+            if v == 'None': data[k] = ''
+        if existing:
+            for k,v in data.items(): setattr(existing, k, v)
+            updated += 1
+        else:
+            db.add(Cliente(**data)); created += 1
+    db.commit(); wb.close()
+    return {"created": created, "updated": updated}
 
 # ── MOVIMIENTOS ──────────────────────────────────────────────
 @app.get("/api/movimientos")
