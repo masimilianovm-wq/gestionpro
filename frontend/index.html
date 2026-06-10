@@ -284,12 +284,13 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:14px 0}
       <!-- STOCK -->
       <div id="page-stock" class="page">
         <div class="toolbar">
-          <div class="search-box"><span class="si">🔍</span><input type="text" id="st-q" placeholder="Código, descripción, barra..." oninput="stPage=1;loadStock()"></div>
+          <div class="search-box"><span class="si">🔍</span><input type="text" id="st-q" placeholder="Código, descripción, barra..." oninput="stPage=1;clearTimeout(window._stTimer);window._stTimer=setTimeout(loadStock,300)"></div>
           <select id="st-fam" class="sel" onchange="stPage=1;loadStock()"><option value="">Todas las familias</option></select>
           <select id="st-fil" class="sel" onchange="stPage=1;loadStock()"><option value="">Todo</option><option value="ok">Normal</option><option value="low">Stock bajo</option><option value="out">Sin stock</option></select>
           <button class="btn btn-primary" onclick="openModalProducto()">+ Producto</button>
           <button class="btn btn-ghost" onclick="openModal('m-importar')">📥 Importar Excel</button>
           <button class="btn btn-ghost" onclick="exportStock()">⬇ CSV</button>
+          <button class="btn btn-ghost" onclick="openModal('m-familias-stock')">🏷 Familias</button>
         </div>
         <div class="card">
           <div class="card-header"><h2>Catálogo de Productos</h2><span class="count-badge" id="st-count">0</span></div>
@@ -306,6 +307,7 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:14px 0}
         <div class="toolbar">
           <div class="search-box"><span class="si">🔍</span><input type="text" id="cli-q" placeholder="Nombre o CUIT..." oninput="loadClientes()"></div>
           <button class="btn btn-primary" onclick="openModalCliente()">+ Cliente</button>
+          <button class="btn btn-ghost" onclick="openModal('m-imp-clientes')">📥 Importar Excel</button>
         </div>
         <div class="card">
           <div class="card-header"><h2>Clientes</h2><span class="count-badge" id="cli-count">0</span></div>
@@ -500,6 +502,29 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:14px 0}
   <div class="modal-ft"><button class="btn btn-ghost" onclick="closeModal('m-usuario')">Cancelar</button><button class="btn btn-primary" onclick="saveUsuario()">Guardar</button></div>
 </div></div>
 
+<!-- Familias desde Stock -->
+<div class="modal-bg" id="m-familias-stock"><div class="modal">
+  <div class="modal-hd"><h2>Familias de Productos</h2><button class="modal-close" onclick="closeModal('m-familias-stock')">✕</button></div>
+  <div class="modal-body">
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <input type="text" id="fam-nueva" placeholder="Nombre de nueva familia..." style="flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:8px 11px;border-radius:8px;font-size:.85rem;outline:none">
+      <button class="btn btn-primary" onclick="saveFamiliaRapida()">+ Agregar</button>
+    </div>
+    <div class="tbl-wrap"><table><thead><tr><th>ID</th><th>Nombre</th><th></th></tr></thead><tbody id="fam-stock-tbody"></tbody></table></div>
+  </div>
+</div></div>
+
+<!-- Importar Clientes Excel -->
+<div class="modal-bg" id="m-imp-clientes"><div class="modal md">
+  <div class="modal-hd"><h2>Importar Clientes desde Excel</h2><button class="modal-close" onclick="closeModal('m-imp-clientes')">✕</button></div>
+  <div class="modal-body">
+    <p style="font-size:.82rem;color:var(--text2);margin-bottom:10px">Columnas reconocidas: <code>Nombre, CUIT, DNI, Telefono, Email, Direccion, CondicionIVA</code><br>Solo <b>Nombre</b> es obligatorio.</p>
+    <div class="fg"><label>Archivo .xlsx</label><input type="file" id="imp-cli-file" accept=".xlsx,.xls" style="color:var(--text)"></div>
+    <div id="imp-cli-result" class="hidden" style="margin-top:8px;padding:10px;background:var(--bg3);border-radius:8px;font-size:.82rem"></div>
+  </div>
+  <div class="modal-ft"><button class="btn btn-ghost" onclick="closeModal('m-imp-clientes')">Cancelar</button><button class="btn btn-primary" onclick="doImportarClientes()">Importar</button></div>
+</div></div>
+
 <div class="toast-wrap" id="toasts"></div>
 
 <script>
@@ -628,16 +653,18 @@ async function loadStock(){
     <td style="font-size:.75rem;color:var(--text3)">${p.impuesto_pct?p.impuesto_pct+'%':'—'}</td>
     <td><div style="display:flex;gap:4px"><button class="btn btn-ghost btn-sm" onclick="editProducto(${p.id})">✏</button><button class="btn btn-ghost btn-sm" onclick="openMovForProduct(${p.id},'${p.codigo}','${p.descripcion.replace(/'/g,'&#39;').replace(/"/g,'&quot;')}')">↕</button></div></td>
   </tr>`).join('');
-  renderPag('st-pag-info','st-pag-btns',stPage,r.pages,r.total,25,p=>{stPage=p;loadStock();});
+  renderPag('st-pag-info','st-pag-btns',stPage,r.pages,r.total,25,'goStockPage');
   }catch(e){console.error('loadStock error:',e);toast('Error cargando productos: '+e.message,'err');}}
-function renderPag(infoId,btnsId,page,pages,total,perPage,cb){
-  document.getElementById(infoId).textContent=`Página ${page} de ${pages} (${total})`;
-  let html=`<button class="pb" onclick="(${cb.toString()})(${Math.max(1,page-1)})" ${page<=1?'disabled':''}>‹</button>`;
+function renderPag(infoId,btnsId,page,pages,total,perPage,fnName){
+  document.getElementById(infoId).textContent=`Página ${page} de ${pages} (${total} registros)`;
+  let html=`<button class="pb" onclick="${fnName}(${Math.max(1,page-1)})" ${page<=1?'disabled':''}>‹</button>`;
   const start=Math.max(1,Math.min(pages-4,page-2));
-  for(let i=start;i<=Math.min(pages,start+4);i++)html+=`<button class="pb ${i===page?'active':''}" onclick="(${cb.toString()})(${i})">${i}</button>`;
-  html+=`<button class="pb" onclick="(${cb.toString()})(${Math.min(pages,page+1)})" ${page>=pages?'disabled':''}>›</button>`;
+  for(let i=start;i<=Math.min(pages,start+4);i++)html+=`<button class="pb ${i===page?'active':''}" onclick="${fnName}(${i})">${i}</button>`;
+  html+=`<button class="pb" onclick="${fnName}(${Math.min(pages,page+1)})" ${page>=pages?'disabled':''}>›</button>`;
   document.getElementById(btnsId).innerHTML=html;
 }
+function goStockPage(p){stPage=p;loadStock();}
+function goMovPage(p){movPage=p;loadMovimientos();}
 async function exportStock(){const q=document.getElementById('st-q').value,fam=document.getElementById('st-fam').value,fil=document.getElementById('st-fil').value;const r=await api('GET',`/api/productos?q=${encodeURIComponent(q)}&familia_id=${fam}&stock_filter=${fil}&page=1&per_page=9999`);if(!r)return;const header=['Codigo','Descripcion','Familia','Stock','StockMinimo','Costo','Lista1','Lista2','Lista3','Lista4','CodBarra'];const rows=r.items.map(p=>[p.codigo,`"${p.descripcion}"`,p.familia_nombre||'',p.stock,p.stock_minimo,p.costo,p.lista1,p.lista2,p.lista3,p.lista4,p.codigo_barra||'']);const csv=[header,...rows].map(r=>r.join(',')).join('\n');const a=document.createElement('a');a.href='data:text/csv;charset=utf-8,\uFEFF'+encodeURIComponent(csv);a.download='stock.csv';a.click();toast('CSV exportado');}
 function openModalProducto(){editProductoId=null;document.getElementById('m-prod-title').textContent='Nuevo Producto';['p-cod','p-barra','p-desc'].forEach(id=>document.getElementById(id).value='');['p-stock','p-min','p-cmin','p-costo','p-l1','p-l2','p-l3','p-l4'].forEach(id=>document.getElementById(id).value=0);populateProdSelects();openModal('m-producto');}
 async function editProducto(id){editProductoId=id;const p=await api('GET',`/api/productos/${id}`);if(!p)return;document.getElementById('m-prod-title').textContent='Editar Producto';document.getElementById('p-cod').value=p.codigo;document.getElementById('p-barra').value=p.codigo_barra||'';document.getElementById('p-desc').value=p.descripcion;document.getElementById('p-stock').value=p.stock;document.getElementById('p-min').value=p.stock_minimo;document.getElementById('p-cmin').value=p.compra_minima;document.getElementById('p-costo').value=p.costo;document.getElementById('p-l1').value=p.lista1;document.getElementById('p-l2').value=p.lista2;document.getElementById('p-l3').value=p.lista3;document.getElementById('p-l4').value=p.lista4;populateProdSelects(p);openModal('m-producto');}
@@ -661,7 +688,7 @@ async function ventaConfirmar(){if(!ventaItems.length){toast('No hay productos',
 function ventaLimpiar(){ventaItems=[];renderVentaItems();document.getElementById('v-desc').value=0;document.getElementById('v-obs').value='';document.querySelectorAll('#v-impuestos-lista input').forEach(cb=>cb.checked=false);ventaRecalc();}
 
 // COMPROBANTES
-async function loadComprobantes(){const q=document.getElementById('comp-q').value,tipo=document.getElementById('comp-tipo').value,estado=document.getElementById('comp-estado').value;const r=await api('GET',`/api/comprobantes?q=${encodeURIComponent(q)}&tipo=${encodeURIComponent(tipo)}&estado=${encodeURIComponent(estado)}&page=${compPage}&per_page=15`);if(!r)return;document.getElementById('comp-list').innerHTML=r.items.map(c=>`<div class="comp-card"><div class="comp-card-header"><span class="comp-num">${c.tipo} #${String(c.numero).padStart(5,'0')}</span><div style="display:flex;gap:6px;align-items:center"><span class="comp-date">${c.fecha}</span><span class="estado e-${c.estado.toLowerCase()}">${c.estado}</span></div></div><div class="comp-client">${c.cliente_nombre}</div><div class="comp-footer"><span style="font-size:.72rem;color:var(--text3)">Click estado para cambiar</span><div style="display:flex;gap:6px;align-items:center"><span class="comp-total">${fmt(c.total)}</span><button class="btn btn-ghost btn-sm" onclick="cambiarEstado(${c.id},'${c.estado}')">Estado ↻</button><a href="/api/comprobantes/${c.id}/pdf" target="_blank" class="btn btn-ghost btn-sm">📄 PDF</a></div></div></div>`).join('')||'<div style="color:var(--text3);padding:30px;text-align:center">Sin comprobantes</div>';const pag=document.getElementById('comp-pag');if(r.pages>1){pag.style.display='flex';pag.innerHTML=`<span class="pag-info">Página ${compPage} de ${r.pages} (${r.total})</span><div class="pag-btns" id="cp-btns"></div>`;let h=`<button class="pb" onclick="compPage=${Math.max(1,compPage-1)};loadComprobantes()" ${compPage<=1?'disabled':''}>‹</button>`;const s=Math.max(1,Math.min(r.pages-4,compPage-2));for(let i=s;i<=Math.min(r.pages,s+4);i++)h+=`<button class="pb ${i===compPage?'active':''}" onclick="compPage=${i};loadComprobantes()">${i}</button>`;h+=`<button class="pb" onclick="compPage=${Math.min(r.pages,compPage+1)};loadComprobantes()" ${compPage>=r.pages?'disabled':''}>›</button>`;document.getElementById('cp-btns').innerHTML=h;}else{pag.style.display='none';}}
+async function loadComprobantes(){const q=document.getElementById('comp-q').value,tipo=document.getElementById('comp-tipo').value,estado=document.getElementById('comp-estado').value;const r=await api('GET',`/api/comprobantes?q=${encodeURIComponent(q)}&tipo=${encodeURIComponent(tipo)}&estado=${encodeURIComponent(estado)}&page=${compPage}&per_page=15`);if(!r)return;document.getElementById('comp-list').innerHTML=r.items.map(c=>`<div class="comp-card"><div class="comp-card-header"><span class="comp-num">${c.tipo} #${String(c.numero).padStart(5,'0')}</span><div style="display:flex;gap:6px;align-items:center"><span class="comp-date">${c.fecha}</span><span class="estado e-${c.estado.toLowerCase()}">${c.estado}</span></div></div><div class="comp-client">${c.cliente_nombre}</div><div class="comp-footer"><span style="font-size:.72rem;color:var(--text3)">Click estado para cambiar</span><div style="display:flex;gap:6px;align-items:center"><span class="comp-total">${fmt(c.total)}</span><button class="btn btn-ghost btn-sm" onclick="cambiarEstado(${c.id},'${c.estado}')">Estado ↻</button><a href="/api/comprobantes/${c.id}/pdf" target="_blank" class="btn btn-ghost btn-sm">📄 PDF</a><button class="btn btn-danger btn-sm" onclick="borrarComp(${c.id},'${c.tipo}',${c.numero})">🗑</button></div></div></div>`).join('')||'<div style="color:var(--text3);padding:30px;text-align:center">Sin comprobantes</div>';const pag=document.getElementById('comp-pag');if(r.pages>1){pag.style.display='flex';pag.innerHTML=`<span class="pag-info">Página ${compPage} de ${r.pages} (${r.total})</span><div class="pag-btns" id="cp-btns"></div>`;let h=`<button class="pb" onclick="compPage=${Math.max(1,compPage-1)};loadComprobantes()" ${compPage<=1?'disabled':''}>‹</button>`;const s=Math.max(1,Math.min(r.pages-4,compPage-2));for(let i=s;i<=Math.min(r.pages,s+4);i++)h+=`<button class="pb ${i===compPage?'active':''}" onclick="compPage=${i};loadComprobantes()">${i}</button>`;h+=`<button class="pb" onclick="compPage=${Math.min(r.pages,compPage+1)};loadComprobantes()" ${compPage>=r.pages?'disabled':''}>›</button>`;document.getElementById('cp-btns').innerHTML=h;}else{pag.style.display='none';}}
 const estadosComp=['Pendiente','Pagado','Anulado'];
 async function cambiarEstado(id,actual){const next=estadosComp[(estadosComp.indexOf(actual)+1)%estadosComp.length];await api('PUT',`/api/comprobantes/${id}/estado`,{estado:next});toast(`Estado → ${next}`);loadComprobantes();}
 
@@ -672,7 +699,7 @@ async function editCliente(id){editClienteId=id;const c=clientesCache.find(x=>x.
 async function saveCliente(){const data={nombre:document.getElementById('c-nombre').value.trim(),cuit:document.getElementById('c-cuit').value,telefono:document.getElementById('c-tel').value,email:document.getElementById('c-email').value,direccion:document.getElementById('c-dir').value,condicion_iva:document.getElementById('c-iva').value,lista_precio:document.getElementById('c-lista').value};if(!data.nombre){toast('Ingresá el nombre','err');return;}try{if(editClienteId){await api('PUT',`/api/clientes/${editClienteId}`,data);}else{await api('POST','/api/clientes',data);}closeModal('m-cliente');loadClientes();loadCaches();toast('Cliente guardado');}catch(e){toast(e.message,'err');}}
 
 // MOVIMIENTOS
-async function loadMovimientos(){const r=await api('GET',`/api/movimientos?page=${movPage}&per_page=25`);if(!r)return;document.getElementById('mov-count').textContent=r.total;document.getElementById('mov-tbody').innerHTML=r.items.map(m=>`<tr><td style="white-space:nowrap">${m.fecha}</td><td style="color:${m.cantidad>0?'var(--green)':'var(--red)'}">${m.tipo}</td><td>${m.producto_codigo} — ${m.producto_desc.substring(0,28)}</td><td style="font-family:'DM Mono',monospace;color:${m.cantidad>0?'var(--green)':'var(--red)'}">${m.cantidad>0?'+':''}${m.cantidad}</td><td style="font-family:'DM Mono',monospace;color:var(--text3)">${m.stock_anterior}</td><td style="font-family:'DM Mono',monospace">${m.stock_nuevo}</td><td style="color:var(--text3)">${m.motivo||'—'}</td></tr>`).join('');renderPag('mov-pag-info','mov-pag-btns',movPage,Math.max(1,Math.ceil(r.total/25)),r.total,25,p=>{movPage=p;loadMovimientos();});}
+async function loadMovimientos(){const r=await api('GET',`/api/movimientos?page=${movPage}&per_page=25`);if(!r)return;document.getElementById('mov-count').textContent=r.total;document.getElementById('mov-tbody').innerHTML=r.items.map(m=>`<tr><td style="white-space:nowrap">${m.fecha}</td><td style="color:${m.cantidad>0?'var(--green)':'var(--red)'}">${m.tipo}</td><td>${m.producto_codigo} — ${m.producto_desc.substring(0,28)}</td><td style="font-family:'DM Mono',monospace;color:${m.cantidad>0?'var(--green)':'var(--red)'}">${m.cantidad>0?'+':''}${m.cantidad}</td><td style="font-family:'DM Mono',monospace;color:var(--text3)">${m.stock_anterior}</td><td style="font-family:'DM Mono',monospace">${m.stock_nuevo}</td><td style="color:var(--text3)">${m.motivo||'—'}</td></tr>`).join('');renderPag('mov-pag-info','mov-pag-btns',movPage,Math.max(1,Math.ceil(r.total/25)),r.total,25,'goMovPage');}
 function openModalMov(tipo){movTipo=tipo;movSelectedProd=null;document.getElementById('m-mov-title').textContent=tipo==='Ingreso'?'Ingreso de Mercadería':'Egreso / Ajuste';['mov-search','mov-sel','mov-motivo'].forEach(id=>document.getElementById(id).value='');document.getElementById('mov-qty').value=1;openModal('m-movimiento');}
 function openMovForProduct(id,cod,desc){movSelectedProd={id,codigo:cod,descripcion:desc};document.getElementById('m-mov-title').textContent='Ajuste de Stock';document.getElementById('mov-search').value=cod;document.getElementById('mov-sel').value=desc;document.getElementById('mov-qty').value=1;document.getElementById('mov-motivo').value='';movTipo='Ingreso';openModal('m-movimiento');}
 let mBusTimer;function movBuscar(){clearTimeout(mBusTimer);mBusTimer=setTimeout(async()=>{const q=document.getElementById('mov-search').value;const dd=document.getElementById('mov-dd');if(q.length<2){dd.classList.add('hidden');return;}const r=await api('GET',`/api/productos/buscar?q=${encodeURIComponent(q)}&limit=10`);if(!r)return;dd.innerHTML=r.map(p=>`<div class="dd-item" onclick="selMovProd(${p.id},'${p.codigo}','${p.descripcion.replace(/'/g,'&#39;')}')"><span><strong>${p.codigo}</strong> ${p.descripcion.substring(0,35)}</span><span class="dd-stock">Stock: ${p.stock}</span></div>`).join('');dd.classList.toggle('hidden',!r.length);},200);}
@@ -711,6 +738,34 @@ async function deleteFam(id){if(!confirm('¿Eliminar familia?'))return;await api
 async function loadUsuarios(){const r=await api('GET','/api/usuarios');if(!r)return;document.getElementById('usr-tbody').innerHTML=r.map(u=>`<tr><td style="color:var(--text)">${u.nombre}</td><td>${u.email}</td><td><span style="color:${u.rol==='admin'?'var(--accent)':'var(--text2)'};font-size:.75rem;font-weight:600">${u.rol}</span></td><td><span style="color:${u.activo?'var(--green)':'var(--red)'};font-size:.75rem">${u.activo?'Activo':'Inactivo'}</span></td><td><button class="btn btn-ghost btn-sm" onclick="openModalUsuario(${u.id})">✏</button></td></tr>`).join('');}
 function openModalUsuario(id){editUsrId=id;['u-nombre','u-email','u-pass'].forEach(x=>document.getElementById(x).value='');document.getElementById('u-rol').value='vendedor';document.getElementById('m-usr-title').textContent=id?'Editar Usuario':'Nuevo Usuario';openModal('m-usuario');}
 async function saveUsuario(){const data={nombre:document.getElementById('u-nombre').value.trim(),email:document.getElementById('u-email').value.trim(),rol:document.getElementById('u-rol').value,password:document.getElementById('u-pass').value};if(!data.nombre||(!editUsrId&&!data.password)){toast('Completá todos los campos','err');return;}try{if(editUsrId){await api('PUT',`/api/usuarios/${editUsrId}`,data);}else{await api('POST','/api/usuarios',data);}closeModal('m-usuario');loadUsuarios();toast('Usuario guardado');}catch(e){toast(e.message,'err');}}
+
+// FAMILIAS DESDE STOCK
+async function openFamiliasStock(){await loadFamilias();const tbody=document.getElementById('fam-stock-tbody');tbody.innerHTML=familiasCache.map(f=>`<tr><td class="code">${f.id}</td><td><input type="text" value="${f.nombre}" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:6px;font-size:.82rem;width:100%" onchange="renameFam(${f.id},this.value)"></td><td><button class="btn btn-danger btn-sm" onclick="deleteFam(${f.id})">✕</button></td></tr>`).join('');openModal('m-familias-stock');}
+async function saveFamiliaRapida(){const nombre=document.getElementById('fam-nueva').value.trim();if(!nombre)return;try{await api('POST','/api/familias',{nombre});document.getElementById('fam-nueva').value='';await loadCaches();openFamiliasStock();toast('Familia creada');}catch(e){toast(e.message,'err');}}
+async function renameFam(id,nombre){try{await api('PUT',`/api/familias/${id}`,{nombre});await loadCaches();}catch(e){toast(e.message,'err');}}
+document.querySelectorAll('[onclick*="m-familias-stock"]').forEach(el=>{el.setAttribute('onclick',"openFamiliasStock()");});
+
+// Monkey-patch Familias button in stock
+document.addEventListener('DOMContentLoaded',()=>{
+  document.querySelector('[onclick*="m-familias-stock"]')?.addEventListener('click',e=>{e.preventDefault();openFamiliasStock();});
+});
+
+// BORRAR COMPROBANTE
+async function borrarComp(id,tipo,numero){
+  if(!confirm(`¿Eliminar ${tipo} #${String(numero).padStart(5,'0')}?\nEl stock de los artículos vinculados se va a restaurar.`))return;
+  try{await api('DELETE',`/api/comprobantes/${id}?devolver_stock=true`);toast('Comprobante eliminado — stock restaurado');loadComprobantes();}catch(e){toast(e.message,'err');}
+}
+
+// IMPORTAR CLIENTES EXCEL
+async function doImportarClientes(){
+  const f=document.getElementById('imp-cli-file').files[0];if(!f){toast('Seleccioná un archivo','err');return;}
+  const fd=new FormData();fd.append('file',f);
+  try{const r=await apiForm('/api/clientes/importar',fd);
+  document.getElementById('imp-cli-result').innerHTML=`✓ Creados: <b>${r.created}</b> · Actualizados: <b>${r.updated}</b>`;
+  document.getElementById('imp-cli-result').classList.remove('hidden');
+  toast(`Clientes: ${r.created} nuevos, ${r.updated} actualizados`);
+  loadClientes();loadCaches();}catch(e){toast(e.message,'err');}
+}
 </script>
 </body>
 </html>
